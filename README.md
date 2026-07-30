@@ -26,3 +26,12 @@ cd web && npm install && npm run dev
 ```
 
 Authentication and library functionality will be added in subsequent steps.
+
+## Authentication API
+
+Authentication uses an email/password account and a signed, HTTP-only Rails session cookie. Mutating authentication requests require a CSRF token from `GET /api/csrf` and must send it as `X-CSRF-Token`.
+
+- `POST /api/auth/sign_up`
+- `POST /api/auth/login`
+- `DELETE /api/auth/logout`
+- `GET /api/me`
