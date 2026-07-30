@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+/api/.bundle
+/api/log/*
+!/api/log/.keep
+/api/tmp/*
+!/api/tmp/.keep
+/api/storage/*
+!/api/storage/.keep
+
+/web/node_modules
+/web/dist
