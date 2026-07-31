@@ -10,6 +10,14 @@ A take-home engineering exercise built with a Rails API, PostgreSQL, and React.
 
 The database is stored in the `postgres_data` Docker volume. To rebuild it from scratch, run `docker compose down -v`, then start the stack again.
 
+To populate a realistic development dataset, run:
+
+```sh
+docker compose exec api bin/rails db:seed
+```
+
+This creates 5,000 books, 750 demo readers, 2,500 active checkouts, and 12,500 expired checkout records. The demo account `reader1@example.com` uses password `password123`. Re-running the seed command replaces only its own demo records.
+
 ## Services
 
 - `web`: React + Vite development server
@@ -44,3 +52,5 @@ All library routes require an authenticated session.
 - `POST /api/checkouts` accepts `{ "book_id": 123 }` and requires `X-CSRF-Token`.
 
 Users can have up to 10 active checkouts. A book can have up to 5 active checkouts. Each checkout expires automatically one week after it is created; expired checkouts no longer consume either limit.
+
+`GET /api/books/:id/read` returns a book's plain-text content only when the signed-in user has an active checkout for that book. Content is stored locally at `api/storage/library/books/<isbn>.txt`, which mirrors a production object-storage key without requiring S3. `db:seed` creates the Lorem Ipsum content files.

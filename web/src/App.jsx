@@ -16,6 +16,52 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(value));
 }
 
+function ReaderPage({ onSignOut }) {
+  const bookId = window.location.pathname.split("/").at(-1);
+  const [book, setBook] = useState(null);
+  const [bookContent, setBookContent] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function loadBook() {
+      try {
+        const [bookResponse, contentResponse] = await Promise.all([
+          fetch(`${apiUrl}/api/books/${bookId}`, { credentials: "include" }),
+          fetch(`${apiUrl}/api/books/${bookId}/read`, { credentials: "include" }),
+        ]);
+        const bookBody = await responseBody(bookResponse);
+        if (!contentResponse.ok) await responseBody(contentResponse);
+
+        setBook(bookBody.book);
+        setBookContent(await contentResponse.text());
+      } catch (loadError) {
+        setError(loadError.message);
+      }
+    }
+
+    loadBook();
+  }, [bookId]);
+
+  return (
+    <main className="reader-page">
+      <header className="reader-header">
+        <button className="secondary" onClick={() => window.location.assign("/")}>Back to library</button>
+        <button className="secondary" onClick={onSignOut}>Sign out</button>
+      </header>
+      {error && <p className="error">{error}</p>}
+      {!error && !book && <p>Loading book…</p>}
+      {book && (
+        <article className="reader-content">
+          <p className="eyebrow">Now reading</p>
+          <h1>{book.title}</h1>
+          <p className="author">{book.author}</p>
+          <div>{bookContent}</div>
+        </article>
+      )}
+    </main>
+  );
+}
+
 function Library({ user, csrfToken, onSignOut }) {
   const [books, setBooks] = useState([]);
   const [checkouts, setCheckouts] = useState([]);
@@ -84,6 +130,10 @@ function Library({ user, csrfToken, onSignOut }) {
     }
   }
 
+  function readBook(checkout) {
+    window.location.assign(`/read/${checkout.book.id}`);
+  }
+
   const activeCheckoutIds = new Set(checkouts.filter((checkout) => checkout.active).map((checkout) => checkout.book.id));
   const activeCheckouts = checkouts.filter((checkout) => checkout.active);
 
@@ -146,12 +196,14 @@ function Library({ user, csrfToken, onSignOut }) {
                 <li key={checkout.id}>
                   <strong>{checkout.book.title}</strong>
                   <span>Due {formatDate(checkout.expires_at)}</span>
+                  <button className="read-button" onClick={() => readBook(checkout)}>Read</button>
                 </li>
               ))}
             </ul>
           ) : <p>Nothing checked out yet.</p>}
         </aside>
       </section>
+
     </main>
   );
 }
@@ -244,6 +296,10 @@ export default function App() {
   }
 
   if (user) {
+    if (window.location.pathname.startsWith("/read/")) {
+      return <ReaderPage onSignOut={signOut} />;
+    }
+
     return <Library user={user} csrfToken={csrfToken} onSignOut={signOut} />;
   }
 
