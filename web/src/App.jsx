@@ -42,10 +42,11 @@ export default function App() {
 
   async function submit(event) {
     event.preventDefault();
+    const formElement = event.currentTarget;
     setError("");
     setSubmitting(true);
 
-    const form = new FormData(event.currentTarget);
+    const form = new FormData(formElement);
     const signingUp = mode === "signUp";
     const payload = signingUp
       ? {
@@ -70,7 +71,7 @@ export default function App() {
         }),
       );
       setUser(result.user);
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (submitError) {
       setError(submitError.message);
     } finally {
