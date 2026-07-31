@@ -25,8 +25,6 @@ cd api && bundle install && bin/rails db:prepare && bin/rails server
 cd web && npm install && npm run dev
 ```
 
-Authentication and library functionality will be added in subsequent steps.
-
 ## Authentication API
 
 Authentication uses an email/password account and a signed, HTTP-only Rails session cookie. Mutating authentication requests require a CSRF token from `GET /api/csrf` and must send it as `X-CSRF-Token`.
@@ -35,3 +33,14 @@ Authentication uses an email/password account and a signed, HTTP-only Rails sess
 - `POST /api/auth/login`
 - `DELETE /api/auth/logout`
 - `GET /api/me`
+
+## Library API and behavior
+
+All library routes require an authenticated session.
+
+- `GET /api/books?query=` searches title, author, and ISBN.
+- `GET /api/books/:id` returns a single book and its current availability.
+- `GET /api/checkouts` returns the current user's checkouts.
+- `POST /api/checkouts` accepts `{ "book_id": 123 }` and requires `X-CSRF-Token`.
+
+Users can have up to 10 active checkouts. A book can have up to 5 active checkouts. Each checkout expires automatically one week after it is created; expired checkouts no longer consume either limit.
