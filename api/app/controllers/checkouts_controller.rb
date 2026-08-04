@@ -9,26 +9,13 @@ class CheckoutsController < ApplicationController
 
   def create
     book = Book.find(params[:book_id])
-
-    if current_user.checkouts.active.count >= 10
-      return render json: { error: "You can only check out 10 books at a time" }, status: :unprocessable_entity
-    end
-
-    if book.checkouts.active.count >= 5
-      return render json: { error: "This book is currently unavailable" }, status: :unprocessable_entity
-    end
-
-    if current_user.checkouts.active.exists?(book: book)
-      return render json: { error: "You have already checked out this book" }, status: :unprocessable_entity
-    end
-
-    checkout = current_user.checkouts.create!(
-      book: book,
-      checked_out_at: Time.current,
-      expires_at: 1.week.from_now
-    )
+    checkout = Checkout.borrow!(user: current_user, book: book)
 
     render json: { checkout: checkout_payload(checkout) }, status: :created
+  rescue Checkout::BorrowError => error
+    render json: { error: error.message }, status: :unprocessable_entity
+  rescue ActiveRecord::RecordInvalid => error
+    render json: { error: error.record.errors.full_messages.to_sentence }, status: :unprocessable_entity
   end
 
   private
@@ -38,7 +25,7 @@ class CheckoutsController < ApplicationController
       id: checkout.id,
       checked_out_at: checkout.checked_out_at.iso8601,
       expires_at: checkout.expires_at.iso8601,
-      active: checkout.expires_at.future?,
+      active: checkout.active?,
       book: {
         id: checkout.book.id,
         title: checkout.book.title,
