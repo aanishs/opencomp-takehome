@@ -75,8 +75,14 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .library-header { display: flex; align-items: start; justify-content: space-between; gap: 2rem; margin-bottom: 3rem; }
 .library-header h1 { max-width: 42rem; }
 .library-layout { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: 3rem; }
-.search-form { display: flex; gap: 0.75rem; margin-bottom: 2rem; }
+.search-form { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
 .search-form input { min-width: 0; }
+.search-form select { border: 1px solid #b8afa2; border-radius: 0.4rem; background: #fffdfa; padding: 0.75rem; }
+.filter-toggle { display: flex; align-items: center; gap: 0.45rem; font-size: 0.9rem; white-space: nowrap; }
+.filter-toggle input { width: auto; }
+.result-count { color: #765942; font-size: 0.9rem; font-weight: 600; margin: 0 0 1.25rem; }
+.pager { display: flex; align-items: center; gap: 1rem; justify-content: center; margin-top: 2rem; }
+.pager span { color: #765942; font-weight: 600; }
 .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; }
 .book-card { display: flex; flex-direction: column; border: 1px solid #d8d0c5; border-radius: 0.5rem; background: #fffdfa; padding: 1.25rem; }
 .book-card h2 { font-size: 1.25rem; margin-bottom: 0.25rem; }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -45,7 +45,12 @@ function ReaderPage({ onSignOut }) {
   return (
     <main className="reader-page">
       <header className="reader-header">
-        <button className="secondary" onClick={() => window.location.assign("/")}>Back to library</button>
+        <button
+          className="secondary"
+          onClick={() => window.location.assign(sessionStorage.getItem("libraryReturnUrl") || "/")}
+        >
+          Back to library
+        </button>
         <button className="secondary" onClick={onSignOut}>Sign out</button>
       </header>
       {error && <p className="error">{error}</p>}
@@ -62,44 +67,104 @@ function ReaderPage({ onSignOut }) {
   );
 }
 
+function libraryUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  const page = parseInt(params.get("page"), 10);
+
+  return {
+    query: params.get("query") || "",
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    sort: ["title", "author", "year"].includes(params.get("sort")) ? params.get("sort") : "title",
+    availableOnly: params.get("available_only") === "true",
+  };
+}
+
 function Library({ user, csrfToken, onSignOut }) {
+  const initial = libraryUrlState();
   const [books, setBooks] = useState([]);
+  const [pagination, setPagination] = useState(null);
   const [checkouts, setCheckouts] = useState([]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initial.query);
+  const [page, setPage] = useState(initial.page);
+  const [sort, setSort] = useState(initial.sort);
+  const [availableOnly, setAvailableOnly] = useState(initial.availableOnly);
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [checkingOutId, setCheckingOutId] = useState(null);
   const [returningId, setReturningId] = useState(null);
   const [error, setError] = useState("");
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
-    loadLibrary("");
+    loadCheckouts();
   }, []);
 
-  async function loadLibrary(searchQuery) {
-    setLoadingBooks(true);
-    setError("");
+  // Debounced book loading. The generation counter discards responses that
+  // resolve out of order, so a slow older query can never overwrite a newer one.
+  useEffect(() => {
+    const generation = ++requestGeneration.current;
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ query, page, sort });
+        if (availableOnly) params.set("available_only", "true");
+        const body = await responseBody(
+          await fetch(`${apiUrl}/api/books?${params}`, { credentials: "include" }),
+        );
+        if (requestGeneration.current !== generation) return;
+        setBooks(body.books);
+        setPagination(body.pagination);
+        setError("");
+      } catch (loadError) {
+        if (requestGeneration.current === generation) setError(loadError.message);
+      } finally {
+        if (requestGeneration.current === generation) setLoadingBooks(false);
+      }
+    }, 300);
 
+    return () => clearTimeout(timer);
+  }, [query, page, sort, availableOnly]);
+
+  // Mirror search state into the URL so reload, back, and the reader
+  // round-trip land on the same view.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (query) params.set("query", query);
+    if (page > 1) params.set("page", String(page));
+    if (sort !== "title") params.set("sort", sort);
+    if (availableOnly) params.set("available_only", "true");
+    const target = params.size ? `/?${params}` : "/";
+    const current = window.location.pathname + window.location.search;
+    if (current !== target) window.history.replaceState(null, "", target);
+  }, [query, page, sort, availableOnly]);
+
+  useEffect(() => {
+    function restoreFromUrl() {
+      const state = libraryUrlState();
+      setQuery(state.query);
+      setPage(state.page);
+      setSort(state.sort);
+      setAvailableOnly(state.availableOnly);
+    }
+
+    window.addEventListener("popstate", restoreFromUrl);
+    return () => window.removeEventListener("popstate", restoreFromUrl);
+  }, []);
+
+  async function loadCheckouts() {
     try {
-      const [booksResponse, checkoutsResponse] = await Promise.all([
-        fetch(`${apiUrl}/api/books?query=${encodeURIComponent(searchQuery)}`, { credentials: "include" }),
-        fetch(`${apiUrl}/api/checkouts`, { credentials: "include" }),
-      ]);
-      const [booksBody, checkoutsBody] = await Promise.all([
-        responseBody(booksResponse),
-        responseBody(checkoutsResponse),
-      ]);
-      setBooks(booksBody.books);
-      setCheckouts(checkoutsBody.checkouts);
+      const body = await responseBody(
+        await fetch(`${apiUrl}/api/checkouts`, { credentials: "include" }),
+      );
+      setCheckouts(body.checkouts);
     } catch (loadError) {
       setError(loadError.message);
-    } finally {
-      setLoadingBooks(false);
     }
   }
 
-  function search(event) {
-    event.preventDefault();
-    loadLibrary(query);
+  function updateSearch(changes) {
+    if (changes.query !== undefined) setQuery(changes.query);
+    if (changes.sort !== undefined) setSort(changes.sort);
+    if (changes.availableOnly !== undefined) setAvailableOnly(changes.availableOnly);
+    setPage(changes.page ?? 1);
   }
 
   async function checkOut(book) {
@@ -159,6 +224,7 @@ function Library({ user, csrfToken, onSignOut }) {
   }
 
   function readBook(checkout) {
+    sessionStorage.setItem("libraryReturnUrl", window.location.pathname + window.location.search);
     window.location.assign(`/read/${checkout.book.id}`);
   }
 
@@ -178,18 +244,40 @@ function Library({ user, csrfToken, onSignOut }) {
 
       <section className="library-layout">
         <div>
-          <form className="search-form" onSubmit={search}>
+          <form className="search-form" onSubmit={(event) => event.preventDefault()}>
             <input
               aria-label="Search by title, author, or ISBN"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => updateSearch({ query: event.target.value })}
               placeholder="Search title, author, or ISBN"
             />
-            <button type="submit">Search</button>
+            <select
+              aria-label="Sort books"
+              value={sort}
+              onChange={(event) => updateSearch({ sort: event.target.value })}
+            >
+              <option value="title">Sort by title</option>
+              <option value="author">Sort by author</option>
+              <option value="year">Newest first</option>
+            </select>
+            <label className="filter-toggle">
+              <input
+                type="checkbox"
+                checked={availableOnly}
+                onChange={(event) => updateSearch({ availableOnly: event.target.checked })}
+              />
+              Available now
+            </label>
           </form>
 
-          {error && <p className="error">{error}</p>}
-          {loadingBooks ? <p>Loading books…</p> : (
+          {error && <p className="error" aria-live="polite">{error}</p>}
+          {pagination && (
+            <p className="result-count" aria-live="polite">
+              {pagination.total_count.toLocaleString()} {pagination.total_count === 1 ? "book" : "books"}
+              {loadingBooks && " — updating…"}
+            </p>
+          )}
+          {loadingBooks && !pagination ? <p>Loading books…</p> : (
             <div className="book-grid">
               {books.map((book) => {
                 const alreadyCheckedOut = activeCheckoutIds.has(book.id);
@@ -212,6 +300,25 @@ function Library({ user, csrfToken, onSignOut }) {
               })}
               {!books.length && <p>No books matched your search.</p>}
             </div>
+          )}
+          {pagination && pagination.total_pages > 1 && (
+            <nav className="pager" aria-label="Pagination">
+              <button
+                className="secondary"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </button>
+              <span>Page {Math.min(page, pagination.total_pages)} of {pagination.total_pages}</span>
+              <button
+                className="secondary"
+                disabled={page >= pagination.total_pages}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </button>
+            </nav>
           )}
         </div>
 
