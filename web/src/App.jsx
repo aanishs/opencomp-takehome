@@ -316,6 +316,17 @@ function Library({ user, csrfToken, onSignOut }) {
 
   const activeCheckoutIds = new Set(checkouts.filter((checkout) => checkout.active).map((checkout) => checkout.book.id));
   const activeCheckouts = checkouts.filter((checkout) => checkout.active);
+  const historyCheckouts = checkouts
+    .filter((checkout) => !checkout.active)
+    .sort((a, b) => new Date(b.returned_at || b.expires_at) - new Date(a.returned_at || a.expires_at));
+  const atUserLimit = activeCheckouts.length >= 10;
+
+  function historyAction(checkout) {
+    if (activeCheckoutIds.has(checkout.book.id)) return { label: "Borrowed", disabled: true };
+    if (!checkout.book.available) return { label: "Unavailable", disabled: true };
+    if (atUserLimit) return { label: "Limit reached", disabled: true };
+    return { label: checkingOutId === checkout.book.id ? "Checking out…" : "Check out again", disabled: checkingOutId === checkout.book.id };
+  }
 
   return (
     <main className="library-shell">
@@ -429,6 +440,36 @@ function Library({ user, csrfToken, onSignOut }) {
               ))}
             </ul>
           ) : <p>Nothing checked out yet.</p>}
+
+          {historyCheckouts.length > 0 && (
+            <div className="history-section">
+              <p className="eyebrow">History</p>
+              <ul>
+                {historyCheckouts.map((checkout) => {
+                  const action = historyAction(checkout);
+
+                  return (
+                    <li key={checkout.id}>
+                      <strong>{checkout.book.title}</strong>
+                      <span>Borrowed {formatDate(checkout.checked_out_at)}</span>
+                      <span>
+                        {checkout.returned_at
+                          ? `Returned ${formatDate(checkout.returned_at)}`
+                          : `Expired ${formatDate(checkout.expires_at)}`}
+                      </span>
+                      <button
+                        className="read-button secondary"
+                        disabled={action.disabled}
+                        onClick={() => checkOut(checkout.book)}
+                      >
+                        {action.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </aside>
       </section>
 

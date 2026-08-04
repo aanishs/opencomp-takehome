@@ -3,8 +3,13 @@ class CheckoutsController < ApplicationController
 
   def index
     checkouts = current_user.checkouts.includes(:book).order(expires_at: :asc)
+    active_counts = Checkout.active.where(book_id: checkouts.map(&:book_id)).group(:book_id).count
 
-    render json: { checkouts: checkouts.map { |checkout| checkout_payload(checkout) } }
+    render json: {
+      checkouts: checkouts.map do |checkout|
+        checkout_payload(checkout, book_active_count: active_counts.fetch(checkout.book_id, 0))
+      end
+    }
   end
 
   def return
@@ -29,7 +34,9 @@ class CheckoutsController < ApplicationController
 
   private
 
-  def checkout_payload(checkout)
+  def checkout_payload(checkout, book_active_count: nil)
+    book_active_count ||= checkout.book.checkouts.active.count
+
     {
       id: checkout.id,
       checked_out_at: checkout.checked_out_at.iso8601,
@@ -40,7 +47,8 @@ class CheckoutsController < ApplicationController
         id: checkout.book.id,
         title: checkout.book.title,
         author: checkout.book.author,
-        isbn: checkout.book.isbn
+        isbn: checkout.book.isbn,
+        available: book_active_count < Checkout::BOOK_LIMIT
       }
     }
   end
