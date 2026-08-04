@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
@@ -16,11 +16,38 @@ function formatDate(value) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(value));
 }
 
+const READER_PAGE_CHARS = 1800;
+const READER_FONT_SIZES = { small: "1rem", medium: "1.15rem", large: "1.35rem" };
+
+// Split on word boundaries near the target page size so pages never cut a
+// word in half; falls back to a hard cut for pathological unbroken text.
+function paginateText(text) {
+  const pages = [];
+  let start = 0;
+
+  while (start < text.length) {
+    let end = Math.min(start + READER_PAGE_CHARS, text.length);
+    if (end < text.length) {
+      const breakAt = Math.max(text.lastIndexOf(" ", end), text.lastIndexOf("\n", end));
+      if (breakAt > start) end = breakAt;
+    }
+    pages.push(text.slice(start, end).trimStart());
+    start = end;
+  }
+
+  return pages.length ? pages : [""];
+}
+
 function ReaderPage({ onSignOut }) {
   const bookId = window.location.pathname.split("/").at(-1);
+  const storageKey = `reader-position-${bookId}`;
   const [book, setBook] = useState(null);
-  const [bookContent, setBookContent] = useState("");
+  const [bookContent, setBookContent] = useState(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [fontSize, setFontSize] = useState("medium");
   const [error, setError] = useState("");
+
+  const pages = useMemo(() => paginateText(bookContent || ""), [bookContent]);
 
   useEffect(() => {
     async function loadBook() {
@@ -32,15 +59,46 @@ function ReaderPage({ onSignOut }) {
         const bookBody = await responseBody(bookResponse);
         if (!contentResponse.ok) await responseBody(contentResponse);
 
+        const content = await contentResponse.text();
         setBook(bookBody.book);
-        setBookContent(await contentResponse.text());
+
+        // Restore the saved position, clamped so a stale or corrupt entry
+        // (edited content, cleared pages) can never point past the end.
+        let saved = {};
+        try {
+          saved = JSON.parse(localStorage.getItem(storageKey)) || {};
+        } catch {
+          saved = {};
+        }
+        const pageCount = paginateText(content).length;
+        const savedPage = Number.isInteger(saved.page) ? saved.page : 0;
+        setPageIndex(Math.min(Math.max(savedPage, 0), pageCount - 1));
+        if (saved.fontSize in READER_FONT_SIZES) setFontSize(saved.fontSize);
+        setBookContent(content);
       } catch (loadError) {
         setError(loadError.message);
       }
     }
 
     loadBook();
-  }, [bookId]);
+  }, [bookId, storageKey]);
+
+  useEffect(() => {
+    if (bookContent === null) return;
+    localStorage.setItem(storageKey, JSON.stringify({ page: pageIndex, fontSize }));
+  }, [pageIndex, fontSize, bookContent, storageKey]);
+
+  useEffect(() => {
+    function turnPage(event) {
+      if (event.key === "ArrowLeft") setPageIndex((current) => Math.max(current - 1, 0));
+      if (event.key === "ArrowRight") setPageIndex((current) => Math.min(current + 1, pages.length - 1));
+    }
+
+    window.addEventListener("keydown", turnPage);
+    return () => window.removeEventListener("keydown", turnPage);
+  }, [pages.length]);
+
+  const percentComplete = Math.round(((pageIndex + 1) / pages.length) * 100);
 
   return (
     <main className="reader-page">
@@ -51,16 +109,44 @@ function ReaderPage({ onSignOut }) {
         >
           Back to library
         </button>
+        <div className="font-controls" role="group" aria-label="Font size">
+          {Object.keys(READER_FONT_SIZES).map((size) => (
+            <button
+              key={size}
+              className={size === fontSize ? "" : "secondary"}
+              onClick={() => setFontSize(size)}
+            >
+              {size === "small" ? "A" : size === "medium" ? "A+" : "A++"}
+            </button>
+          ))}
+        </div>
         <button className="secondary" onClick={onSignOut}>Sign out</button>
       </header>
       {error && <p className="error">{error}</p>}
-      {!error && !book && <p>Loading book…</p>}
-      {book && (
+      {!error && bookContent === null && <p>Loading book…</p>}
+      {book && bookContent !== null && (
         <article className="reader-content">
           <p className="eyebrow">Now reading</p>
           <h1>{book.title}</h1>
           <p className="author">{book.author}</p>
-          <div>{bookContent}</div>
+          <div style={{ fontSize: READER_FONT_SIZES[fontSize] }}>{pages[pageIndex]}</div>
+          <nav className="reader-nav" aria-label="Reader pagination">
+            <button
+              className="secondary"
+              disabled={pageIndex <= 0}
+              onClick={() => setPageIndex(pageIndex - 1)}
+            >
+              Previous
+            </button>
+            <span>Page {pageIndex + 1} of {pages.length} · {percentComplete}%</span>
+            <button
+              className="secondary"
+              disabled={pageIndex >= pages.length - 1}
+              onClick={() => setPageIndex(pageIndex + 1)}
+            >
+              Next
+            </button>
+          </nav>
         </article>
       )}
     </main>

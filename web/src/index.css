@@ -100,6 +100,10 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .reader-page { max-width: 48rem; margin: 3rem auto 7rem; padding: 0 1.5rem; }
 .reader-header { align-items: start; display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 4rem; }
 .reader-content > div { white-space: pre-wrap; font-family: Georgia, serif; font-size: 1.15rem; line-height: 1.75; }
+.font-controls { display: flex; gap: 0.5rem; }
+.font-controls button { font-size: 0.85rem; padding: 0.45rem 0.65rem; }
+.reader-nav { display: flex; align-items: center; gap: 1rem; justify-content: center; margin-top: 3rem; }
+.reader-nav span { color: #765942; font-weight: 600; }
 
 @media (max-width: 36rem) {
   .shell { margin: 4rem auto; }
