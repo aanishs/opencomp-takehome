@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_04_210000) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_04_211500) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -29,11 +29,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_04_210000) do
     t.datetime "checked_out_at", null: false
     t.datetime "created_at", null: false
     t.datetime "expires_at", null: false
+    t.datetime "returned_at"
     t.datetime "updated_at", null: false
     t.bigint "user_id", null: false
-    t.index ["book_id", "expires_at"], name: "index_checkouts_on_book_id_and_expires_at"
+    t.index ["book_id", "expires_at"], name: "index_checkouts_on_book_id_and_expires_at", where: "(returned_at IS NULL)"
     t.index ["book_id"], name: "index_checkouts_on_book_id"
-    t.index ["user_id", "expires_at"], name: "index_checkouts_on_user_id_and_expires_at"
+    t.index ["user_id", "expires_at"], name: "index_checkouts_on_user_id_and_expires_at", where: "(returned_at IS NULL)"
     t.index ["user_id"], name: "index_checkouts_on_user_id"
   end
 

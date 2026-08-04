@@ -68,6 +68,7 @@ function Library({ user, csrfToken, onSignOut }) {
   const [query, setQuery] = useState("");
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [checkingOutId, setCheckingOutId] = useState(null);
+  const [returningId, setReturningId] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -127,6 +128,33 @@ function Library({ user, csrfToken, onSignOut }) {
       setError(checkoutError.message);
     } finally {
       setCheckingOutId(null);
+    }
+  }
+
+  async function returnBook(checkout) {
+    setError("");
+    setReturningId(checkout.id);
+
+    try {
+      const result = await responseBody(
+        await fetch(`${apiUrl}/api/checkouts/${checkout.id}/return`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "X-CSRF-Token": csrfToken },
+        }),
+      );
+      setCheckouts((current) => current.map((existing) => (
+        existing.id === checkout.id ? result.checkout : existing
+      )));
+      setBooks((current) => current.map((book) => (
+        book.id === checkout.book.id
+          ? { ...book, active_checkout_count: Math.max(0, book.active_checkout_count - 1), available: true }
+          : book
+      )));
+    } catch (returnError) {
+      setError(returnError.message);
+    } finally {
+      setReturningId(null);
     }
   }
 
@@ -197,6 +225,13 @@ function Library({ user, csrfToken, onSignOut }) {
                   <strong>{checkout.book.title}</strong>
                   <span>Due {formatDate(checkout.expires_at)}</span>
                   <button className="read-button" onClick={() => readBook(checkout)}>Read</button>
+                  <button
+                    className="secondary"
+                    disabled={returningId === checkout.id}
+                    onClick={() => returnBook(checkout)}
+                  >
+                    {returningId === checkout.id ? "Returning…" : "Return"}
+                  </button>
                 </li>
               ))}
             </ul>

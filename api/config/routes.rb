@@ -7,7 +7,9 @@ Rails.application.routes.draw do
     resources :books, only: %i[index show] do
       get :read, on: :member
     end
-    resources :checkouts, only: %i[index create]
+    resources :checkouts, only: %i[index create] do
+      post :return, on: :member
+    end
     post "auth/sign_up", to: "registrations#create"
     post "auth/login", to: "sessions#create"
     delete "auth/logout", to: "sessions#destroy"

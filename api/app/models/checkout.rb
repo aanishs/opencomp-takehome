@@ -17,13 +17,26 @@ class Checkout < ApplicationRecord
     def message = "You have already checked out this book"
   end
 
+  class NotReturnable < StandardError
+    def message = "This checkout is no longer active"
+  end
+
   belongs_to :user
   belongs_to :book
 
-  scope :active, -> { where("expires_at > ?", Time.current) }
+  scope :active, -> { where(returned_at: nil).where("expires_at > ?", Time.current) }
 
   def active?
-    expires_at.future?
+    returned_at.nil? && expires_at.future?
+  end
+
+  # Guarded UPDATE so two concurrent returns (or a return racing expiry) can't
+  # both succeed or overwrite the original returned_at.
+  def return!
+    updated = self.class.active.where(id: id).update_all(returned_at: Time.current)
+    raise NotReturnable if updated.zero?
+
+    reload
   end
 
   # The cap checks and the insert must be atomic: two concurrent requests can
