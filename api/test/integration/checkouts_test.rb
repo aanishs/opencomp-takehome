@@ -38,6 +38,9 @@ class CheckoutsTest < ActionDispatch::IntegrationTest
       headers: { "X-CSRF-Token" => token },
       as: :json
 
-    token
+    # Signing up resets the session (fixation defense), invalidating the
+    # pre-auth CSRF token — fetch a fresh one, as the real client does.
+    get "/api/csrf"
+    response.parsed_body.fetch("csrf_token")
   end
 end

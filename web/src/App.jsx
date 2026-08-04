@@ -505,6 +505,19 @@ export default function App() {
     loadSession();
   }, []);
 
+  // Login, sign-up, and logout all reset the server session, which
+  // invalidates the CSRF token issued before — fetch a fresh one.
+  async function refreshCsrfToken() {
+    try {
+      const csrf = await responseBody(
+        await fetch(`${apiUrl}/api/csrf`, { credentials: "include" }),
+      );
+      setCsrfToken(csrf.csrf_token);
+    } catch {
+      // Keep the old token; the next mutating request will surface the error.
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -535,6 +548,7 @@ export default function App() {
           body: JSON.stringify(payload),
         }),
       );
+      await refreshCsrfToken();
       setUser(result.user);
       formElement.reset();
     } catch (submitError) {
@@ -554,6 +568,7 @@ export default function App() {
         headers: { "X-CSRF-Token": csrfToken },
       });
       if (!response.ok) await responseBody(response);
+      await refreshCsrfToken();
       setUser(null);
     } catch (signOutError) {
       setError(signOutError.message);
