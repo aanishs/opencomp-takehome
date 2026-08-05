@@ -13,7 +13,7 @@ info:
 servers:
   - url: http://localhost:3000
     description: Development (docker compose)
-  - url: http://localhost:3001
+  - url: http://127.0.0.1:3101
     description: Test stack (docker-compose.test.yml)
 
 security:
