@@ -36,6 +36,20 @@ describe("the AI librarian endpoint", () => {
     });
     expect(emptyMessages.status).toBe(422);
 
+    const noMessagesKey = await session.fetch(`${BASE_URL}/api/librarian`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken },
+      body: JSON.stringify({}),
+    });
+    expect(noMessagesKey.status).toBe(422);
+
+    const blankContent = await session.fetch(`${BASE_URL}/api/librarian`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken },
+      body: JSON.stringify({ messages: [{ role: "user", content: "   " }] }),
+    });
+    expect(blankContent.status).toBe(422);
+
     const unknownRole = await session.fetch(`${BASE_URL}/api/librarian`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrfToken },
