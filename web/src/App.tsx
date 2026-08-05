@@ -1,47 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import {
-  ApiError,
-  isRecord,
-  parseBookResponse,
-  parseBooksResponse,
-  parseCheckoutResponse,
-  parseCheckoutsResponse,
-  parseCsrfResponse,
-  parseUserResponse,
-} from "./api/types";
-import type { Book, Checkout, Pagination, User } from "./api/types";
-
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
-
-// App registers a handler here so a 401 from any authenticated request drops
-// the user back to the sign-in screen instead of stranding them in the app.
-let onUnauthorized: (() => void) | null = null;
-
-function errorMessage(body: unknown): string {
-  if (isRecord(body)) {
-    if (Array.isArray(body.errors)) {
-      const messages = body.errors.filter((entry): entry is string => typeof entry === "string");
-      if (messages.length > 0) return messages.join(", ");
-    }
-    if (typeof body.error === "string" && body.error) return body.error;
-  }
-  return "Something went wrong";
-}
+import { api, setCsrfToken as syncCsrfToken, setOnUnauthorized, unwrap } from "./api/client";
+import type { Book, Checkout, LibrarianMessage, Pagination, User } from "./api/types";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
 }
 
-async function responseBody(response: Response): Promise<unknown> {
-  const body: unknown = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    if (response.status === 401 && onUnauthorized) onUnauthorized();
-    throw new ApiError(errorMessage(body), response.status);
-  }
-
-  return body;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 // Only same-origin absolute paths are safe to navigate to; anything else
@@ -122,14 +89,13 @@ function ReaderPage({ onSignOut }: { onSignOut: () => void }) {
   useEffect(() => {
     async function loadBook() {
       try {
-        const [bookResponse, contentResponse] = await Promise.all([
-          fetch(`${apiUrl}/api/books/${bookId}`, { credentials: "include" }),
-          fetch(`${apiUrl}/api/books/${bookId}/read`, { credentials: "include" }),
+        const id = Number.parseInt(bookId, 10);
+        const [bookResult, contentResult] = await Promise.all([
+          api.GET("/api/books/{id}", { params: { path: { id } } }),
+          api.GET("/api/books/{id}/read", { params: { path: { id } }, parseAs: "text" }),
         ]);
-        const bookBody = parseBookResponse(await responseBody(bookResponse));
-        if (!contentResponse.ok) await responseBody(contentResponse);
-
-        const content = await contentResponse.text();
+        const bookBody = unwrap(bookResult);
+        const content = unwrap(contentResult);
         setBook(bookBody.book);
 
         // Restore the saved position, clamped so a stale or corrupt entry
@@ -217,6 +183,84 @@ function ReaderPage({ onSignOut }: { onSignOut: () => void }) {
   );
 }
 
+// Mirrors the server cap in LibrarianController::MAX_MESSAGES — older turns
+// are dropped from the request, not the transcript, so the UI keeps everything.
+const LIBRARIAN_MAX_MESSAGES = 30;
+const LIBRARIAN_MAX_MESSAGE_LENGTH = 4000;
+
+function LibrarianChat() {
+  const [messages, setMessages] = useState<LibrarianMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState("");
+  const logRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [messages, asking]);
+
+  async function ask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const question = input.trim();
+    if (!question || asking) return;
+
+    const transcript: LibrarianMessage[] = [...messages, { role: "user", content: question }];
+    setMessages(transcript);
+    setInput("");
+    setError("");
+    setAsking(true);
+
+    try {
+      const body = unwrap(
+        await api.POST("/api/librarian", {
+          body: { messages: transcript.slice(-LIBRARIAN_MAX_MESSAGES) },
+        }),
+      );
+      setMessages([...transcript, { role: "assistant", content: body.reply }]);
+    } catch (askError) {
+      setError(messageOf(askError));
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  return (
+    <section className="librarian-section">
+      <p className="eyebrow">Ask the librarian</p>
+      <h2>Not sure what to read?</h2>
+      {messages.length === 0 && (
+        <p className="librarian-hint">
+          Describe what you&apos;re in the mood for — &ldquo;something short and funny about time
+          travel&rdquo; — and I&apos;ll search the catalog for you.
+        </p>
+      )}
+      {messages.length > 0 && (
+        <div className="librarian-log" ref={logRef} aria-live="polite">
+          {messages.map((message, index) => (
+            <p key={index} className={`chat-message ${message.role}`}>
+              {message.content}
+            </p>
+          ))}
+          {asking && <p className="chat-message assistant pending">Searching the shelves…</p>}
+        </div>
+      )}
+      {error && <p className="error" aria-live="polite">{error}</p>}
+      <form className="librarian-form" onSubmit={(event) => void ask(event)}>
+        <input
+          aria-label="Ask the librarian"
+          value={input}
+          maxLength={LIBRARIAN_MAX_MESSAGE_LENGTH}
+          onChange={(event) => { setInput(event.target.value); }}
+          placeholder="What should I read next?"
+        />
+        <button type="submit" disabled={asking || !input.trim()}>
+          {asking ? "…" : "Ask"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 const SORTS = ["title", "author", "year"] as const;
 type Sort = (typeof SORTS)[number];
 
@@ -246,11 +290,10 @@ function libraryUrlState(): LibraryUrlState {
 
 interface LibraryProps {
   user: User;
-  csrfToken: string | null;
   onSignOut: () => void;
 }
 
-function Library({ user, csrfToken, onSignOut }: LibraryProps) {
+function Library({ user, onSignOut }: LibraryProps) {
   const initial = libraryUrlState();
   const [books, setBooks] = useState<Book[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -283,10 +326,17 @@ function Library({ user, csrfToken, onSignOut }: LibraryProps) {
   async function loadBooks(generation = ++requestGeneration.current) {
     setLoadingBooks(true);
     try {
-      const params = new URLSearchParams({ query, page: String(page), sort });
-      if (availableOnly) params.set("available_only", "true");
-      const body = parseBooksResponse(
-        await responseBody(await fetch(`${apiUrl}/api/books?${params.toString()}`, { credentials: "include" })),
+      const body = unwrap(
+        await api.GET("/api/books", {
+          params: {
+            query: {
+              query: query || undefined,
+              page,
+              sort,
+              ...(availableOnly ? { available_only: "true" } : {}),
+            },
+          },
+        }),
       );
       if (requestGeneration.current !== generation) return;
       setBooks(body.books);
@@ -331,9 +381,7 @@ function Library({ user, csrfToken, onSignOut }: LibraryProps) {
 
   async function loadCheckouts() {
     try {
-      const body = parseCheckoutsResponse(
-        await responseBody(await fetch(`${apiUrl}/api/checkouts`, { credentials: "include" })),
-      );
+      const body = unwrap(await api.GET("/api/checkouts"));
       setCheckouts(body.checkouts);
     } catch (loadError) {
       setActionError(messageOf(loadError));
@@ -347,24 +395,13 @@ function Library({ user, csrfToken, onSignOut }: LibraryProps) {
     setPage(changes.page ?? 1);
   }
 
-  function csrfHeader(): Record<string, string> {
-    return csrfToken ? { "X-CSRF-Token": csrfToken } : {};
-  }
-
   async function checkOut(book: { id: number }) {
     setActionError("");
     setCheckingOutId(book.id);
 
     try {
-      const result = parseCheckoutResponse(
-        await responseBody(
-          await fetch(`${apiUrl}/api/checkouts`, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json", ...csrfHeader() },
-            body: JSON.stringify({ book_id: book.id }),
-          }),
-        ),
+      const result = unwrap(
+        await api.POST("/api/checkouts", { body: { book_id: book.id } }),
       );
       setCheckouts((current) => [...current, result.checkout]);
       setBooks((current) => current.map((currentBook) => (
@@ -384,14 +421,8 @@ function Library({ user, csrfToken, onSignOut }: LibraryProps) {
     setReturningId(checkout.id);
 
     try {
-      const result = parseCheckoutResponse(
-        await responseBody(
-          await fetch(`${apiUrl}/api/checkouts/${String(checkout.id)}/return`, {
-            method: "POST",
-            credentials: "include",
-            headers: csrfHeader(),
-          }),
-        ),
+      const result = unwrap(
+        await api.POST("/api/checkouts/{id}/return", { params: { path: { id: checkout.id } } }),
       );
       setCheckouts((current) => current.map((existing) => (
         existing.id === checkout.id ? result.checkout : existing
@@ -524,6 +555,8 @@ function Library({ user, csrfToken, onSignOut }: LibraryProps) {
         </div>
 
         <aside className="checkout-panel">
+          <LibrarianChat />
+
           <p className="eyebrow">Your checkouts</p>
           <h2>{activeCheckouts.length} of 10 books borrowed</h2>
           {activeCheckouts.length ? (
@@ -589,23 +622,28 @@ export default function App() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Register the module-level 401 handler declared next to responseBody: an
-  // expired session anywhere in the app lands back on the sign-in screen.
+  // Keep React state (drives the disabled submit button) and the client
+  // middleware's token in step with a single setter.
+  function storeCsrfToken(token: string | null) {
+    setCsrfToken(token);
+    syncCsrfToken(token);
+  }
+
+  // Register the client's 401 handler: an expired session anywhere in the
+  // app lands back on the sign-in screen.
   useEffect(() => {
-    onUnauthorized = () => { setUser(null); };
-    return () => { onUnauthorized = null; };
+    setOnUnauthorized(() => { setUser(null); });
+    return () => { setOnUnauthorized(null); };
   }, []);
 
   useEffect(() => {
     async function loadSession() {
       try {
-        const csrf = parseCsrfResponse(
-          await responseBody(await fetch(`${apiUrl}/api/csrf`, { credentials: "include" })),
-        );
-        setCsrfToken(csrf.csrf_token);
+        const csrf = unwrap(await api.GET("/api/csrf"));
+        storeCsrfToken(csrf.csrf_token);
 
-        const session = await fetch(`${apiUrl}/api/me`, { credentials: "include" });
-        if (session.ok) setUser(parseUserResponse(await session.json()).user);
+        const session = await api.GET("/api/me");
+        if (session.data) setUser(session.data.user);
       } catch (loadError) {
         setError(messageOf(loadError));
       } finally {
@@ -620,10 +658,8 @@ export default function App() {
   // invalidates the CSRF token issued before — fetch a fresh one.
   async function refreshCsrfToken() {
     try {
-      const csrf = parseCsrfResponse(
-        await responseBody(await fetch(`${apiUrl}/api/csrf`, { credentials: "include" })),
-      );
-      setCsrfToken(csrf.csrf_token);
+      const csrf = unwrap(await api.GET("/api/csrf"));
+      storeCsrfToken(csrf.csrf_token);
     } catch {
       // Keep the old token; the next mutating request will surface the error.
     }
@@ -641,30 +677,25 @@ export default function App() {
       return typeof value === "string" ? value : "";
     };
     const signingUp = mode === "signUp";
-    const payload = signingUp
-      ? {
-          user: {
-            email: field("email"),
-            password: field("password"),
-            password_confirmation: field("passwordConfirmation"),
-          },
-        }
-      : { email: field("email"), password: field("password") };
 
     try {
-      const result = parseUserResponse(
-        await responseBody(
-          await fetch(`${apiUrl}/api/auth/${signingUp ? "sign_up" : "login"}`, {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-              ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
-            },
-            body: JSON.stringify(payload),
-          }),
-        ),
-      );
+      const result = signingUp
+        ? unwrap(
+            await api.POST("/api/auth/sign_up", {
+              body: {
+                user: {
+                  email: field("email"),
+                  password: field("password"),
+                  password_confirmation: field("passwordConfirmation"),
+                },
+              },
+            }),
+          )
+        : unwrap(
+            await api.POST("/api/auth/login", {
+              body: { email: field("email"), password: field("password") },
+            }),
+          );
       await refreshCsrfToken();
       setUser(result.user);
       formElement.reset();
@@ -679,12 +710,8 @@ export default function App() {
     setError("");
 
     try {
-      const response = await fetch(`${apiUrl}/api/auth/logout`, {
-        method: "DELETE",
-        credentials: "include",
-        headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
-      });
-      if (!response.ok) await responseBody(response);
+      const result = await api.DELETE("/api/auth/logout");
+      if (!result.response.ok) unwrap(result);
       await refreshCsrfToken();
       setUser(null);
     } catch (signOutError) {
@@ -701,7 +728,7 @@ export default function App() {
       return <ReaderPage onSignOut={() => void signOut()} />;
     }
 
-    return <Library user={user} csrfToken={csrfToken} onSignOut={() => void signOut()} />;
+    return <Library user={user} onSignOut={() => void signOut()} />;
   }
 
   const signingUp = mode === "signUp";

@@ -2,9 +2,12 @@
   "extends": "@total-typescript/tsconfig/bundler/dom",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "noFallthroughCasesInSwitch": true,
-    "allowJs": false
+    "allowJs": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "../openapi/generated/schema.d.ts"]
 }

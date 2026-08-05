@@ -10,6 +10,8 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "openapi/generated/**",
+      // shadcn-vendored components are generator-owned, like openapi/generated.
+      "web/src/components/ui/**",
       "api/**",
       ".scratch/**",
       ".dunning-kruger/**",

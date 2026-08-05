@@ -31,10 +31,13 @@ components:
     CsrfToken:
       name: X-CSRF-Token
       in: header
-      required: true
+      required: false
       schema:
         type: string
-      description: Token from GET /api/csrf. Required on every mutating request.
+      description: >
+        Token from GET /api/csrf. The server rejects mutating requests without
+        it (422); marked optional here because the web client injects it via
+        middleware rather than at call sites.
     Page:
       name: page
       in: query
