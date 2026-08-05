@@ -1,9 +1,11 @@
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+# npm ci installs exactly what the committed lockfile pins, so the container
+# runs the same dependency tree CI audits (npm install would silently float it).
+RUN npm ci
 
 COPY . .
 

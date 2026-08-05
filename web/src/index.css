@@ -1,7 +1,67 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Design tokens carried over from the original scaffold so the Tailwind
+   migration keeps the library's identity instead of defaulting to gray. */
+@theme {
+  --color-paper: #f7f4ee;
+  --color-card: #fffdfa;
+  --color-ink: #17202a;
+  --color-forest: #2b5d50;
+  --color-clay: #765942;
+  --color-rule: #d8d0c5;
+  --color-danger: #a62626;
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-serif: Georgia, ui-serif, serif;
+}
+
+/* ---------------------------------------------------------------------------
+   Legacy stylesheet below. Components are being migrated to Tailwind/shadcn
+   incrementally; each rule here is deleted as its component moves over.
+   --------------------------------------------------------------------------- */
+
 :root {
   color: #17202a;
   background: #f7f4ee;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  /* shadcn's semantic tokens mapped onto the library's palette, so components
+     inherit the product's identity instead of the default neutral gray. */
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+  --card: var(--color-card);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-card);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-forest);
+  --primary-foreground: var(--color-card);
+  --secondary: oklch(0.96 0.008 85);
+  --secondary-foreground: var(--color-forest);
+  --muted: oklch(0.96 0.008 85);
+  --muted-foreground: var(--color-clay);
+  --accent: oklch(0.94 0.012 85);
+  --accent-foreground: var(--color-forest);
+  --destructive: var(--color-danger);
+  --border: var(--color-rule);
+  --input: var(--color-rule);
+  --ring: var(--color-forest);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
 * { box-sizing: border-box; }
@@ -62,7 +122,10 @@ button {
   padding: 0.75rem 1rem;
 }
 
-button:disabled { cursor: wait; opacity: 0.65; }
+/* A disabled button is unavailable, not busy — `wait` implies something is in
+   flight. Buttons that really are working set data-busy while the request runs. */
+button:disabled { cursor: not-allowed; opacity: 0.65; }
+button[data-busy="true"] { cursor: progress; }
 .link-button { background: transparent; color: #2b5d50; padding: 1rem 0; }
 .secondary { background: transparent; border: 1px solid #2b5d50; color: #2b5d50; }
 .error { color: #a62626; font-weight: 600; }
@@ -75,8 +138,14 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .library-header { display: flex; align-items: start; justify-content: space-between; gap: 2rem; margin-bottom: 3rem; }
 .library-header h1 { max-width: 42rem; }
 .library-layout { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: 3rem; }
-.search-form { display: flex; gap: 0.75rem; margin-bottom: 2rem; }
+.search-form { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; }
 .search-form input { min-width: 0; }
+.search-form select { border: 1px solid #b8afa2; border-radius: 0.4rem; background: #fffdfa; padding: 0.75rem; }
+.filter-toggle { display: flex; align-items: center; gap: 0.45rem; font-size: 0.9rem; white-space: nowrap; }
+.filter-toggle input { width: auto; }
+.result-count { color: #765942; font-size: 0.9rem; font-weight: 600; margin: 0 0 1.25rem; }
+.pager { display: flex; align-items: center; gap: 1rem; justify-content: center; margin-top: 2rem; }
+.pager span { color: #765942; font-weight: 600; }
 .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; }
 .book-card { display: flex; flex-direction: column; border: 1px solid #d8d0c5; border-radius: 0.5rem; background: #fffdfa; padding: 1.25rem; }
 .book-card h2 { font-size: 1.25rem; margin-bottom: 0.25rem; }
@@ -91,9 +160,14 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .checkout-panel li { display: grid; gap: 0.25rem; border-bottom: 1px solid #d8d0c5; padding-bottom: 1rem; }
 .checkout-panel span { color: #765942; font-size: 0.9rem; }
 .read-button { justify-self: start; font-size: 0.85rem; margin-top: 0.5rem; padding: 0.45rem 0.65rem; }
+.history-section { border-top: 1px solid #d8d0c5; margin-top: 2rem; padding-top: 1.25rem; }
 .reader-page { max-width: 48rem; margin: 3rem auto 7rem; padding: 0 1.5rem; }
 .reader-header { align-items: start; display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 4rem; }
 .reader-content > div { white-space: pre-wrap; font-family: Georgia, serif; font-size: 1.15rem; line-height: 1.75; }
+.font-controls { display: flex; gap: 0.5rem; }
+.font-controls button { font-size: 0.85rem; padding: 0.45rem 0.65rem; }
+.reader-nav { display: flex; align-items: center; gap: 1rem; justify-content: center; margin-top: 3rem; }
+.reader-nav span { color: #765942; font-weight: 600; }
 
 @media (max-width: 36rem) {
   .shell { margin: 4rem auto; }
@@ -101,4 +175,111 @@ button:disabled { cursor: wait; opacity: 0.65; }
   .library-header, .library-layout { display: grid; }
   .reader-header { display: grid; }
   .search-form { display: grid; }
+}
+
+.librarian-section { border-bottom: 1px solid #d8d0c5; margin-bottom: 2rem; padding-bottom: 1.5rem; }
+.librarian-section h2 { font-size: 1.5rem; }
+.librarian-hint { color: #765942; font-size: 0.9rem; }
+.librarian-log { display: grid; gap: 0.6rem; margin: 1rem 0; max-height: 20rem; overflow-y: auto; }
+.chat-message { border-radius: 0.5rem; font-size: 0.9rem; line-height: 1.5; margin: 0; padding: 0.6rem 0.8rem; white-space: pre-wrap; }
+.chat-message.user { background: #2b5d50; color: #fffdfa; justify-self: end; margin-left: 1.5rem; }
+.chat-message.assistant { background: #fffdfa; border: 1px solid #d8d0c5; justify-self: start; margin-right: 1.5rem; }
+.chat-message.pending { color: #765942; font-style: italic; }
+.librarian-form { display: flex; flex-direction: row; gap: 0.5rem; margin: 0; }
+.librarian-form input { min-width: 0; }
+.librarian-form button { padding: 0.75rem 1rem; }
+
+@theme inline {
+  /* Geist for the interface, Georgia for reading — a deliberate pairing:
+     modern sans chrome around classic serif book text. */
+  --font-heading: 'Geist Variable', sans-serif;
+  --font-sans: 'Geist Variable', sans-serif;
+  --font-serif: Georgia, ui-serif, serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
 }

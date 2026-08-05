@@ -1,0 +1,18 @@
+{
+  "extends": "@total-typescript/tsconfig/bundler/no-dom",
+  "compilerOptions": {
+    "noFallthroughCasesInSwitch": true,
+    "allowJs": false,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src",
+    "e2e",
+    "reset.d.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "../openapi/generated/schema.d.ts"
+  ]
+}

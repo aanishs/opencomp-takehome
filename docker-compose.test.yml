@@ -1,0 +1,52 @@
+# Additive test stack. Run with:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up
+#
+# api_test serves RAILS_ENV=test with the test seam enabled against the
+# isolated library_test database on :3101; web_test serves the frontend on
+# :5175 pointed at it. The dev api/web/db services and the seeded dev
+# database are untouched. Test tooling addresses 127.0.0.1 explicitly —
+# `localhost` can resolve to ::1 and hit an unrelated server.
+services:
+  api_test:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    entrypoint: ["./bin/docker-entrypoint.dev"]
+    # Distinct pidfile: this container shares the ./api mount with the dev
+    # api service, and two rails servers can't share tmp/pids/server.pid.
+    command: bundle exec rails server -b 0.0.0.0 -p 3101 -P /tmp/rails-test.pid
+    environment:
+      RAILS_ENV: test
+      TEST_SEAM: enabled
+      POSTGRES_HOST: db
+      POSTGRES_TEST_DB: library_test
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      FRONTEND_ORIGIN: http://127.0.0.1:${WEB_TEST_PORT:-5175}
+    ports:
+      - "127.0.0.1:${API_TEST_PORT:-3101}:3101"
+    volumes:
+      - ./api:/rails
+      - bundle_cache:/usr/local/bundle
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web_test:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    command: npm run dev -- --host 0.0.0.0 --port 5175
+    environment:
+      VITE_API_URL: http://127.0.0.1:${API_TEST_PORT:-3101}
+    ports:
+      - "127.0.0.1:${WEB_TEST_PORT:-5175}:5175"
+    volumes:
+      - ./web:/app
+      - web_test_node_modules:/app/node_modules
+    depends_on:
+      - api_test
+
+volumes:
+  web_test_node_modules:

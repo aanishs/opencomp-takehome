@@ -1,0 +1,20 @@
+{
+  "name": "alexandria",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "npm --prefix web run typecheck && npm --prefix tests run typecheck && npm run lint",
+    "lint": "eslint .",
+    "gen:api": "npm --prefix web run gen:api",
+    "gen:check": "npm run gen:api && git diff --exit-code openapi/generated",
+    "test:api": "npm --prefix tests run test:api",
+    "test": "npm run typecheck && npm run test:web && npm run test:api",
+    "test:web": "npm --prefix web run test",
+    "test:e2e": "npm --prefix tests run test:e2e"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

@@ -1,0 +1,553 @@
+openapi: 3.1.0
+info:
+  title: Online Library API
+  description: >
+    Contract for the online library take-home. This file is the single source
+    of truth: web/ generates its client types from it, the TypeScript test
+    suite validates every response against it, and Schemathesis fuzzes the
+    running server for conformance. Test-seam endpoints (/api/test/*) are
+    deliberately absent — they exist only in the test environment and are not
+    part of the product contract.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Development (docker compose)
+  - url: http://127.0.0.1:3101
+    description: Test stack (docker-compose.test.yml)
+
+security:
+  - cookieAuth: []
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: _online_library_session
+      description: Signed, HTTP-only Rails session cookie set by sign-up/login.
+
+  parameters:
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      schema:
+        type: string
+      description: >
+        Token from GET /api/csrf. The server rejects mutating requests without
+        it (422); marked optional here because the web client injects it via
+        middleware rather than at call sites.
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Values beyond the maximum are clamped, not rejected.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 10000000
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 24
+
+  schemas:
+    User:
+      type: object
+      required: [id, email]
+      additionalProperties: false
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+
+    Book:
+      type: object
+      required:
+        [id, title, author, isbn, description, published_year,
+         active_checkout_count, available]
+      additionalProperties: false
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        author: { type: string }
+        isbn: { type: string }
+        description: { type: ["string", "null"] }
+        published_year: { type: ["integer", "null"] }
+        active_checkout_count:
+          type: integer
+          minimum: 0
+          maximum: 5
+        available: { type: boolean }
+
+    CheckoutBook:
+      type: object
+      description: Reduced book embedded in a checkout payload.
+      required: [id, title, author, isbn, available]
+      additionalProperties: false
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        author: { type: string }
+        isbn: { type: string }
+        available: { type: boolean }
+
+    Checkout:
+      type: object
+      required: [id, checked_out_at, expires_at, returned_at, active, book]
+      additionalProperties: false
+      properties:
+        id: { type: integer }
+        checked_out_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        returned_at: { type: ["string", "null"], format: date-time }
+        active: { type: boolean }
+        book: { $ref: "#/components/schemas/CheckoutBook" }
+
+    Pagination:
+      type: object
+      required: [page, per_page, total_pages, total_count]
+      additionalProperties: false
+      properties:
+        page: { type: integer, minimum: 1 }
+        per_page: { type: integer, minimum: 1, maximum: 100 }
+        total_pages: { type: integer, minimum: 0 }
+        total_count: { type: integer, minimum: 0 }
+
+    LibrarianMessage:
+      type: object
+      required: [role, content]
+      additionalProperties: false
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error: { type: string }
+
+    ErrorList:
+      type: object
+      required: [errors]
+      additionalProperties: false
+      properties:
+        errors:
+          type: array
+          items: { type: string }
+
+  responses:
+    BadRequest:
+      description: >
+        Malformed request: invalid JSON, a missing required parameter, bad
+        encoding, or null bytes in any parameter. The body is unspecified
+        because most 400s are produced by the framework, not the app.
+    Unauthorized:
+      description: No authenticated session.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Record does not exist.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnprocessableError:
+      description: Request refused (domain rule or invalid CSRF token).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Per-IP rate limit exceeded.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+paths:
+  /api/csrf:
+    get:
+      operationId: getCsrf
+      summary: Issue a CSRF token for the current session.
+      security: []
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: Token bound to the session cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrf_token]
+                additionalProperties: false
+                properties:
+                  csrf_token: { type: string }
+
+  /api/me:
+    get:
+      operationId: getMe
+      summary: Current authenticated user.
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: The signed-in user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                additionalProperties: false
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/sign_up:
+    post:
+      operationId: signUp
+      summary: Register an account and start a session.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user]
+              additionalProperties: false
+              properties:
+                user:
+                  type: object
+                  required: [email, password, password_confirmation]
+                  additionalProperties: false
+                  properties:
+                    email: { type: string, format: email }
+                    password: { type: string, minLength: 1 }
+                    password_confirmation: { type: string, minLength: 1 }
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "201":
+          description: Account created; session cookie set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                additionalProperties: false
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        "422":
+          description: >
+            Validation failure ({errors: [...]}) or invalid CSRF token
+            ({error: ...}).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ErrorList"
+                  - $ref: "#/components/schemas/Error"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: Authenticate and start a session.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              additionalProperties: false
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: Session established (rotated) for the user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user]
+                additionalProperties: false
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+        "401":
+          description: Invalid email or password.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/UnprocessableError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/auth/logout:
+    delete:
+      operationId: logout
+      summary: End the session.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "204":
+          description: Session reset. Works with or without a signed-in user.
+        "422": { $ref: "#/components/responses/UnprocessableError" }
+
+  /api/books:
+    get:
+      operationId: listBooks
+      summary: Search and paginate the catalog.
+      parameters:
+        - name: query
+          in: query
+          required: false
+          description: >
+            Matched against title, author, and ISBN. Terms beyond 100
+            characters are truncated server-side, not rejected.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: Unknown values fall back to title.
+          schema:
+            type: string
+            enum: [title, author, year]
+            default: title
+        - name: available_only
+          in: query
+          required: false
+          description: Only "true" filters; any other value is ignored.
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: One page of books with availability counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [books, pagination]
+                additionalProperties: false
+                properties:
+                  books:
+                    type: array
+                    items: { $ref: "#/components/schemas/Book" }
+                  pagination: { $ref: "#/components/schemas/Pagination" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/books/{id}:
+    get:
+      operationId: getBook
+      summary: A single book with current availability.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: The book.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [book]
+                additionalProperties: false
+                properties:
+                  book: { $ref: "#/components/schemas/Book" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/books/{id}/read:
+    get:
+      operationId: readBook
+      summary: Plain-text content, gated on an active checkout.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: The book's full text.
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: No active checkout for this book.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Book missing, or its content file is unavailable.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/checkouts:
+    get:
+      operationId: listCheckouts
+      summary: The current user's checkouts, active first, then recent history.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: One page of checkouts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [checkouts, pagination]
+                additionalProperties: false
+                properties:
+                  checkouts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Checkout" }
+                  pagination: { $ref: "#/components/schemas/Pagination" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createCheckout
+      summary: Borrow a book for one week.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id]
+              additionalProperties: false
+              properties:
+                book_id: { type: integer }
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "201":
+          description: The new active checkout.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [checkout]
+                additionalProperties: false
+                properties:
+                  checkout: { $ref: "#/components/schemas/Checkout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: >
+            User at 10-book limit, book at 5-copy limit, already checked out,
+            or invalid CSRF token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/checkouts/{id}/return:
+    post:
+      operationId: returnCheckout
+      summary: Return an active checkout early.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - $ref: "#/components/parameters/CsrfToken"
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: The checkout, now returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [checkout]
+                additionalProperties: false
+                properties:
+                  checkout: { $ref: "#/components/schemas/Checkout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: Checkout already returned or expired, or invalid CSRF.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/librarian:
+    post:
+      operationId: askLibrarian
+      summary: Ask the AI librarian for a recommendation from the catalog.
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [messages]
+              additionalProperties: false
+              properties:
+                messages:
+                  type: array
+                  minItems: 1
+                  maxItems: 30
+                  description: Full conversation transcript; last message must have role "user".
+                  items: { $ref: "#/components/schemas/LibrarianMessage" }
+      responses:
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "200":
+          description: The librarian's plain-text reply.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reply]
+                additionalProperties: false
+                properties:
+                  reply: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422":
+          description: Malformed conversation, or invalid CSRF token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502":
+          description: Upstream model error.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Librarian offline (no API key) or upstream rate-limited.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

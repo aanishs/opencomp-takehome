@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 
+# Rails secrets — never commit. The primary key decrypts credentials.yml.enc,
+# which holds secret_key_base (used to sign session cookies).
+/api/config/master.key
+/api/config/credentials/*.key
+
 /api/.bundle
 /api/log/*
 !/api/log/.keep
@@ -13,3 +18,8 @@
 
 /web/node_modules
 /web/dist
+.gstack/
+node_modules/
+.scratch/
+.dunning-kruger/
+.schemathesis/

@@ -1,0 +1,8 @@
+# Schemathesis configuration (scripts/schemathesis.sh).
+#
+# 501 is accepted for the not_a_server_error check: the coverage phase probes
+# unspecified HTTP verbs (e.g. the draft QUERY method), and Puma's HTTP
+# parser rejects those with 501 before the request ever reaches the app —
+# the RFC-correct response, not an app failure.
+[checks.not_a_server_error]
+expected-statuses = [200, 201, 204, 400, 401, 403, 404, 405, 422, 429, 501, 502, 503]

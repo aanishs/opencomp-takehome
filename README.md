@@ -28,21 +28,52 @@ docker compose exec api bin/rails db:seed
 
 This creates 5,000 books, 750 demo readers, 2,500 active checkouts, and 12,500 expired checkout records. The demo account `reader1@example.com` uses password `password123`. Re-running the seed command replaces only its own demo records.
 
+## AI librarian (optional)
+
+The sidebar includes an "Ask the librarian" chat that answers natural-language requests ("something short and funny about time travel") by searching the real catalog with Claude, so it only recommends books that exist here. To enable it, set `ANTHROPIC_API_KEY` in your local `.env` (get a key at [platform.claude.com](https://platform.claude.com)) and restart the stack. Without a key the endpoint returns a clear "librarian is offline" message and the rest of the app is unaffected. The endpoint is authenticated and rate-limited to 10 requests per 3 minutes.
+
 ## Tests and verification
 
-With the stack running:
+`openapi/openapi.yaml` is the single source of truth for the API. The frontend's client types are generated from it (`npm run gen:api`; CI fails if the committed types drift), the test suites validate every response against it, and Schemathesis fuzzes the running server for conformance.
+
+Start the isolated test stack — a test-only Rails server and database on `127.0.0.1:3101` plus a frontend on `127.0.0.1:5175`; the seeded dev stack is untouched:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+```
+
+Then, from the repo root (Node 22+):
+
+```sh
+npm install && npm --prefix web install && npm --prefix tests install
+
+npm test                    # typecheck + lint + web component tests + black-box API suite
+npm run typecheck           # tsc (web + tests) + ESLint (strict-type-checked, assertion ban)
+npm run test:web            # component tests against contract-typed MSW mocks
+npm run test:api            # black-box API suite (Vitest), then the serial rate-limit spec
+npm run test:e2e            # Playwright journeys (npx --prefix tests playwright install chromium first)
+./scripts/schemathesis.sh   # property-based contract fuzzing (needs uv, or pip install schemathesis)
+npm run gen:check           # regenerate types from openapi.yaml and fail on drift
+```
+
+The one remaining Ruby test file is `api/test/services/librarian_search_test.rb` (see the philosophy section for why):
 
 ```sh
 docker compose exec api bin/rails test
-docker compose exec web npm run build
 ```
 
-For a non-Docker setup, prepare the test database before running Rails tests:
+Note: the test API server runs `RAILS_ENV=test`, which does not reload code — restart `api_test` after changing Ruby files. The web production build is verified with `docker compose exec web npm run build`.
 
-```sh
-cd api && RAILS_ENV=test bin/rails db:prepare && bin/rails test
-cd web && npm run build
-```
+## Type safety and testing philosophy
+
+The stack is typed end to end and tested almost entirely from the outside in:
+
+- **Compile time.** The frontend is strict TypeScript (`@total-typescript/tsconfig`, `ts-reset`, ESLint `strict-type-checked` with type assertions banned outside `as const` and generated code). Every API call goes through an `openapi-fetch` client typed by the generated schema, so a request that disagrees with the contract cannot compile. MSW mock handlers are typed from the same schema, so a stale mock is a compile error rather than a false-positive test.
+- **Runtime.** The black-box suite validates every response's status, content type, and body against `openapi.yaml` (ajv, 2020-12 dialect), and Schemathesis generates ~1,200 fuzz cases per run from the same file. Fuzzing found three real server bugs during development — null-byte parameters 500ing inside Postgres, a bigint overflow via astronomical `page=` values, and framework debug 404s leaking exception traces — all fixed and now regression-guarded by the contract.
+- **No unit tests, deliberately.** Anything observable over HTTP is tested over HTTP against the real server and database. A test-environment-only seam (`TEST_SEAM=enabled`: reset / factory / login_as, deliberately absent from the contract) creates otherwise unreachable states such as expired checkouts, and lets eight real sessions race the borrow path (exactly 5 must win). One documented exception survives: `librarian_search_test.rb` covers catalog-ranking SQL that is reachable in production only through the librarian's LLM tool call, so no black-box test can exercise it.
+- **No runtime validation in the app itself.** API responses are triple-covered — generated compile-time types in the client, ajv validation in the test suite, Schemathesis conformance against the server — so app-side schema validation (zod et al.) would only add bundle weight and a second source of truth that could drift from the YAML.
+
+Known coverage exceptions, accepted knowingly: the login timing-equalization defense is not asserted (network jitter dwarfs bcrypt timing over HTTP), and the librarian's 200 reply path requires a real `ANTHROPIC_API_KEY` (its auth, validation, rate-limit, and offline surfaces are fully tested without one).
 
 ## Services
 
@@ -58,6 +89,10 @@ The API expects PostgreSQL credentials in `POSTGRES_*` environment variables (se
 cd api && bundle install && bin/rails db:prepare && bin/rails server
 cd web && npm install && npm run dev
 ```
+
+## API reference
+
+The canonical, machine-checked API reference is [`openapi/openapi.yaml`](openapi/openapi.yaml). The sections below are a human-oriented summary.
 
 ## Authentication API
 

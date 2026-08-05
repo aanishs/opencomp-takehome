@@ -20,13 +20,20 @@ Rails.application.configure do
 
   # Show full error reports.
   config.consider_all_requests_local = true
-  config.cache_store = :null_store
+
+  # Rails' rate limiter counts against the cache store; a null store would
+  # silently disable it and make 429 behavior untestable. The suite clears
+  # the cache between tests (see test_helper.rb).
+  config.cache_store = :memory_store
 
   # Render exception templates for rescuable exceptions and raise for other exceptions.
   config.action_dispatch.show_exceptions = :rescuable
 
-  # Disable request forgery protection in test environment.
-  config.action_controller.allow_forgery_protection = false
+  # The black-box test server (TEST_SEAM=enabled) keeps forgery protection ON
+  # so the TypeScript suite and Schemathesis exercise the real contract,
+  # including CSRF 422s. Plain `rails test` keeps the Rails default (off),
+  # since minitest integration requests don't carry CSRF tokens.
+  config.action_controller.allow_forgery_protection = ENV["TEST_SEAM"] == "enabled"
 
   # Store uploaded files on the local file system in a temporary directory.
   config.active_storage.service = :test
