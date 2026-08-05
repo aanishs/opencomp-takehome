@@ -1,0 +1,10 @@
+{
+  "extends": "@total-typescript/tsconfig/bundler/dom",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "noFallthroughCasesInSwitch": true,
+    "allowJs": false
+  },
+  "include": ["src", "vite.config.ts"]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "alexandria",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "npm --prefix web run typecheck && npm run lint",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
