@@ -10,6 +10,11 @@ class User < ApplicationRecord
     format: { with: URI::MailTo::EMAIL_REGEXP },
     uniqueness: { case_sensitive: false }
 
+  # has_secure_password enforces presence and the 72-byte bcrypt ceiling; add a
+  # floor so trivially guessable passwords can't be set. Only validated when a
+  # password is being set, so it doesn't block unrelated updates.
+  validates :password, length: { minimum: 8 }, if: -> { password.present? }
+
   private
 
   def normalize_email

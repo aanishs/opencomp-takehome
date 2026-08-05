@@ -32,7 +32,8 @@ module Api
     config.session_store :cookie_store,
       key: "_online_library_session",
       same_site: :lax,
-      secure: Rails.env.production?
+      secure: Rails.env.production?,
+      expire_after: 2.weeks
     config.middleware.use ActionDispatch::Cookies
     config.middleware.use ActionDispatch::Session::CookieStore, config.session_options
   end

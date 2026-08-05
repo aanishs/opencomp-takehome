@@ -17,7 +17,13 @@ default: &default
   encoding: unicode
   # For details on connection pooling, see Rails configuration guide
   # https://guides.rubyonrails.org/configuring.html#database-pooling
-  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  # `pool` is the key ActiveRecord actually reads; `max_connections` was a
+  # no-op, so the pool silently stayed at 5 regardless of RAILS_MAX_THREADS.
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  # A stuck borrow holds a book row lock; without a timeout it could block
+  # every other borrow of that book indefinitely. Fail fast instead.
+  variables:
+    lock_timeout: "5s"
   host: <%= ENV.fetch("POSTGRES_HOST", "localhost") %>
   port: <%= ENV.fetch("POSTGRES_PORT", 5432) %>
   username: <%= ENV.fetch("POSTGRES_USER", "postgres") %>

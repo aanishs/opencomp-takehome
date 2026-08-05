@@ -57,6 +57,16 @@ class AuthSecurityTest < ActionDispatch::IntegrationTest
     assert_response :too_many_requests
   end
 
+  test "a too-short password is rejected at sign up" do
+    post "/api/auth/sign_up",
+      params: { user: { email: "shorty@example.com", password: "abc", password_confirmation: "abc" } },
+      headers: { "X-CSRF-Token" => csrf_token },
+      as: :json
+
+    assert_response :unprocessable_entity
+    assert_includes response.parsed_body["errors"].join, "Password"
+  end
+
   test "duplicate email sign up is rejected" do
     sign_up("secure@example.com")
 
