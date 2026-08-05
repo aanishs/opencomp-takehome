@@ -28,6 +28,10 @@ docker compose exec api bin/rails db:seed
 
 This creates 5,000 books, 750 demo readers, 2,500 active checkouts, and 12,500 expired checkout records. The demo account `reader1@example.com` uses password `password123`. Re-running the seed command replaces only its own demo records.
 
+## AI librarian (optional)
+
+The sidebar includes an "Ask the librarian" chat that answers natural-language requests ("something short and funny about time travel") by searching the real catalog with Claude, so it only recommends books that exist here. To enable it, set `ANTHROPIC_API_KEY` in your local `.env` (get a key at [platform.claude.com](https://platform.claude.com)) and restart the stack. Without a key the endpoint returns a clear "librarian is offline" message and the rest of the app is unaffected. The endpoint is authenticated and rate-limited to 10 requests per 3 minutes.
+
 ## Tests and verification
 
 With the stack running:
