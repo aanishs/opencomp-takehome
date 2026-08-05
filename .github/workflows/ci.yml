@@ -5,6 +5,16 @@ on:
   push:
     branches: [ main ]
 
+# Least privilege: these jobs only read the checkout. No token write scope is
+# handed to a compromised dependency or action.
+permissions:
+  contents: read
+
+# One in-flight run per ref; superseded pushes are cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 defaults:
   run:
     working-directory: api
@@ -15,10 +25,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
         with:
           working-directory: api
           bundler-cache: true
@@ -32,19 +42,19 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     env:
-      RUBOCOP_CACHE_ROOT: api/tmp/rubocop
+      RUBOCOP_CACHE_ROOT: ${{ github.workspace }}/api/tmp/rubocop
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
         with:
           working-directory: api
           bundler-cache: true
 
       - name: Prepare RuboCop cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         env:
           DEPENDENCIES_HASH: ${{ hashFiles('api/.ruby-version', 'api/**/.rubocop.yml', 'api/**/.rubocop_todo.yml', 'api/Gemfile.lock') }}
         with:
@@ -70,14 +80,14 @@ jobs:
         options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
       - name: Install packages
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libpq-dev
 
-      - name: Checkout code
-        uses: actions/checkout@v5
-
       - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
         with:
           working-directory: api
           bundler-cache: true
@@ -93,10 +103,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm

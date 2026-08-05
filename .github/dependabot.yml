@@ -15,3 +15,13 @@ updates:
   schedule:
     interval: weekly
   open-pull-requests-limit: 10
+- package-ecosystem: docker
+  directory: "/api"
+  schedule:
+    interval: weekly
+  open-pull-requests-limit: 10
+- package-ecosystem: docker
+  directory: "/web"
+  schedule:
+    interval: weekly
+  open-pull-requests-limit: 10
