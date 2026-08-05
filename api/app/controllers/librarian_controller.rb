@@ -11,11 +11,15 @@ class LibrarianController < ApplicationController
     with: -> { render json: { error: "The librarian needs a short break. Please try again in a few minutes." }, status: :too_many_requests }
 
   def create
+    # Validate the transcript before the availability check: a malformed
+    # request is a 422 whether or not the librarian is configured.
+    messages = conversation
+
     unless Librarian.configured?
       return render json: { error: "The librarian is offline (no ANTHROPIC_API_KEY configured)." }, status: :service_unavailable
     end
 
-    render json: { reply: Librarian.reply(user: current_user, messages: conversation) }
+    render json: { reply: Librarian.reply(user: current_user, messages: messages) }
   rescue InvalidConversation
     render json: { error: "Invalid conversation" }, status: :unprocessable_entity
   rescue Anthropic::Errors::RateLimitError

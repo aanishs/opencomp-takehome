@@ -3,8 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "npm --prefix web run typecheck && npm run lint",
-    "lint": "eslint ."
+    "typecheck": "npm --prefix web run typecheck && npm --prefix tests run typecheck && npm run lint",
+    "lint": "eslint .",
+    "gen:api": "npm --prefix web run gen:api",
+    "gen:check": "npm run gen:api && git diff --exit-code openapi/generated",
+    "test:api": "npm --prefix tests run test:api",
+    "test": "npm run typecheck && npm run test:api"
   },
   "devDependencies": {
     "eslint": "^9.0.0",
