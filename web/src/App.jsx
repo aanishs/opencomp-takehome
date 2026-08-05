@@ -2,14 +2,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
+// App registers a handler here so a 401 from any authenticated request drops
+// the user back to the sign-in screen instead of stranding them in the app.
+let onUnauthorized = null;
+
 async function responseBody(response) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.errors?.join(", ") || body.error || "Something went wrong");
+    if (response.status === 401 && onUnauthorized) onUnauthorized();
+    const error = new Error(body.errors?.join(", ") || body.error || "Something went wrong");
+    error.status = response.status;
+    throw error;
   }
 
   return body;
+}
+
+// Only same-origin absolute paths are safe to navigate to; anything else
+// (//evil.com, https://…, javascript:) is rejected in favor of the library root.
+function safeInternalPath(value) {
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : "/";
 }
 
 function formatDate(value) {
@@ -73,7 +86,11 @@ function ReaderPage({ onSignOut }) {
         const pageCount = paginateText(content).length;
         const savedPage = Number.isInteger(saved.page) ? saved.page : 0;
         setPageIndex(Math.min(Math.max(savedPage, 0), pageCount - 1));
-        if (saved.fontSize in READER_FONT_SIZES) setFontSize(saved.fontSize);
+        // hasOwnProperty, not `in` — `in` matches inherited keys like
+        // "toString" or "constructor" from a tampered localStorage value.
+        if (Object.prototype.hasOwnProperty.call(READER_FONT_SIZES, saved.fontSize)) {
+          setFontSize(saved.fontSize);
+        }
         setBookContent(content);
       } catch (loadError) {
         setError(loadError.message);
@@ -105,7 +122,7 @@ function ReaderPage({ onSignOut }) {
       <header className="reader-header">
         <button
           className="secondary"
-          onClick={() => window.location.assign(sessionStorage.getItem("libraryReturnUrl") || "/")}
+          onClick={() => window.location.assign(safeInternalPath(sessionStorage.getItem("libraryReturnUrl")))}
         >
           Back to library
         </button>
@@ -177,7 +194,8 @@ function Library({ user, csrfToken, onSignOut }) {
   const [loadingBooks, setLoadingBooks] = useState(true);
   const [checkingOutId, setCheckingOutId] = useState(null);
   const [returningId, setReturningId] = useState(null);
-  const [error, setError] = useState("");
+  const [searchError, setSearchError] = useState("");
+  const [actionError, setActionError] = useState("");
   const requestGeneration = useRef(0);
 
   useEffect(() => {
@@ -188,26 +206,34 @@ function Library({ user, csrfToken, onSignOut }) {
   // resolve out of order, so a slow older query can never overwrite a newer one.
   useEffect(() => {
     const generation = ++requestGeneration.current;
-    const timer = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ query, page, sort });
-        if (availableOnly) params.set("available_only", "true");
-        const body = await responseBody(
-          await fetch(`${apiUrl}/api/books?${params}`, { credentials: "include" }),
-        );
-        if (requestGeneration.current !== generation) return;
-        setBooks(body.books);
-        setPagination(body.pagination);
-        setError("");
-      } catch (loadError) {
-        if (requestGeneration.current === generation) setError(loadError.message);
-      } finally {
-        if (requestGeneration.current === generation) setLoadingBooks(false);
-      }
-    }, 300);
-
+    const timer = setTimeout(() => loadBooks(generation), 300);
     return () => clearTimeout(timer);
   }, [query, page, sort, availableOnly]);
+
+  // Bumps the generation by default so an ad-hoc reload (after a checkout or
+  // return) invalidates any in-flight debounced search.
+  async function loadBooks(generation = ++requestGeneration.current) {
+    setLoadingBooks(true);
+    try {
+      const params = new URLSearchParams({ query, page, sort });
+      if (availableOnly) params.set("available_only", "true");
+      const body = await responseBody(
+        await fetch(`${apiUrl}/api/books?${params}`, { credentials: "include" }),
+      );
+      if (requestGeneration.current !== generation) return;
+      setBooks(body.books);
+      setPagination(body.pagination);
+      setSearchError("");
+      // Snap an out-of-range page (e.g. ?page=99999) back to the last real page.
+      if (body.pagination.total_pages > 0 && page > body.pagination.total_pages) {
+        setPage(body.pagination.total_pages);
+      }
+    } catch (loadError) {
+      if (requestGeneration.current === generation) setSearchError(loadError.message);
+    } finally {
+      if (requestGeneration.current === generation) setLoadingBooks(false);
+    }
+  }
 
   // Mirror search state into the URL so reload, back, and the reader
   // round-trip land on the same view.
@@ -242,7 +268,7 @@ function Library({ user, csrfToken, onSignOut }) {
       );
       setCheckouts(body.checkouts);
     } catch (loadError) {
-      setError(loadError.message);
+      setActionError(loadError.message);
     }
   }
 
@@ -253,12 +279,15 @@ function Library({ user, csrfToken, onSignOut }) {
     setPage(changes.page ?? 1);
   }
 
+  // After a mutation we refetch books and checkouts from the server rather than
+  // guessing new availability locally — another user may hold the last copy, so
+  // an optimistic "available" flip would show the user something false.
   async function checkOut(book) {
-    setError("");
+    setActionError("");
     setCheckingOutId(book.id);
 
     try {
-      const result = await responseBody(
+      await responseBody(
         await fetch(`${apiUrl}/api/checkouts`, {
           method: "POST",
           credentials: "include",
@@ -269,41 +298,29 @@ function Library({ user, csrfToken, onSignOut }) {
           body: JSON.stringify({ book_id: book.id }),
         }),
       );
-      setCheckouts((current) => [...current, result.checkout]);
-      setBooks((current) => current.map((currentBook) => (
-        currentBook.id === book.id
-          ? { ...currentBook, active_checkout_count: currentBook.active_checkout_count + 1, available: currentBook.active_checkout_count + 1 < 5 }
-          : currentBook
-      )));
+      await Promise.all([ loadBooks(), loadCheckouts() ]);
     } catch (checkoutError) {
-      setError(checkoutError.message);
+      setActionError(checkoutError.message);
     } finally {
       setCheckingOutId(null);
     }
   }
 
   async function returnBook(checkout) {
-    setError("");
+    setActionError("");
     setReturningId(checkout.id);
 
     try {
-      const result = await responseBody(
+      await responseBody(
         await fetch(`${apiUrl}/api/checkouts/${checkout.id}/return`, {
           method: "POST",
           credentials: "include",
           headers: { "X-CSRF-Token": csrfToken },
         }),
       );
-      setCheckouts((current) => current.map((existing) => (
-        existing.id === checkout.id ? result.checkout : existing
-      )));
-      setBooks((current) => current.map((book) => (
-        book.id === checkout.book.id
-          ? { ...book, active_checkout_count: Math.max(0, book.active_checkout_count - 1), available: true }
-          : book
-      )));
+      await Promise.all([ loadBooks(), loadCheckouts() ]);
     } catch (returnError) {
-      setError(returnError.message);
+      setActionError(returnError.message);
     } finally {
       setReturningId(null);
     }
@@ -367,7 +384,7 @@ function Library({ user, csrfToken, onSignOut }) {
             </label>
           </form>
 
-          {error && <p className="error" aria-live="polite">{error}</p>}
+          {searchError && <p className="error" aria-live="polite">{searchError}</p>}
           {pagination && (
             <p className="result-count" aria-live="polite">
               {pagination.total_count.toLocaleString()} {pagination.total_count === 1 ? "book" : "books"}
@@ -422,6 +439,7 @@ function Library({ user, csrfToken, onSignOut }) {
         <aside className="checkout-panel">
           <p className="eyebrow">Your checkouts</p>
           <h2>{activeCheckouts.length} of 10 books borrowed</h2>
+          {actionError && <p className="error" aria-live="polite">{actionError}</p>}
           {activeCheckouts.length ? (
             <ul>
               {activeCheckouts.map((checkout) => (
@@ -505,16 +523,25 @@ export default function App() {
     loadSession();
   }, []);
 
-  // Login, sign-up, and logout all reset the server session, which
-  // invalidates the CSRF token issued before — fetch a fresh one.
+  // A 401 from any authenticated request drops the user back to sign-in
+  // instead of leaving them stranded in an authed UI that only errors.
+  useEffect(() => {
+    onUnauthorized = () => setUser(null);
+    return () => { onUnauthorized = null; };
+  }, []);
+
+  // Login, sign-up, and logout all reset the server session, which invalidates
+  // the CSRF token issued before — fetch a fresh one and return it so callers
+  // can use it immediately without waiting for state to flush.
   async function refreshCsrfToken() {
     try {
       const csrf = await responseBody(
         await fetch(`${apiUrl}/api/csrf`, { credentials: "include" }),
       );
       setCsrfToken(csrf.csrf_token);
+      return csrf.csrf_token;
     } catch {
-      // Keep the old token; the next mutating request will surface the error.
+      return null;
     }
   }
 
@@ -537,13 +564,16 @@ export default function App() {
       : { email: form.get("email"), password: form.get("password") };
 
     try {
+      // If the initial CSRF fetch failed, get one now rather than leaving the
+      // form permanently unusable.
+      const token = csrfToken || (await refreshCsrfToken());
       const result = await responseBody(
         await fetch(`${apiUrl}/api/auth/${signingUp ? "sign_up" : "login"}`, {
           method: "POST",
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            "X-CSRF-Token": csrfToken,
+            "X-CSRF-Token": token,
           },
           body: JSON.stringify(payload),
         }),
@@ -613,7 +643,7 @@ export default function App() {
           </label>
         )}
         {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={submitting || !csrfToken}>
+        <button type="submit" disabled={submitting}>
           {submitting ? "Please wait…" : signingUp ? "Create account" : "Sign in"}
         </button>
       </form>
