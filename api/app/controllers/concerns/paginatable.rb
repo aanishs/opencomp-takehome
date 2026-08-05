@@ -3,6 +3,9 @@ module Paginatable
 
   PER_PAGE_DEFAULT = 24
   PER_PAGE_MAX = 100
+  # An unbounded page becomes an OFFSET larger than Postgres' bigint and
+  # 500s the request (found by Schemathesis); clamp far beyond any real page.
+  PAGE_MAX = 10_000_000
   QUERY_MAX_LENGTH = 100
 
   private
@@ -14,7 +17,7 @@ module Paginatable
     total_count = relation.count
     total_count = total_count.size if total_count.is_a?(Hash) # grouped relations count into a hash
 
-    page = [ scalar_param(:page).to_i, 1 ].max
+    page = scalar_param(:page).to_i.clamp(1, PAGE_MAX)
     per_page = scalar_param(:per_page).to_i
     per_page = default_per_page unless per_page.positive?
     per_page = [ per_page, PER_PAGE_MAX ].min

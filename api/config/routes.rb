@@ -24,4 +24,8 @@ Rails.application.routes.draw do
       post "test/login_as", to: "test_seam#login_as"
     end
   end
+
+  # Unmatched routes render the contract's {error} 404 instead of the
+  # framework's debug page (which leaks exception traces in dev/test).
+  match "*unmatched", to: "application#route_not_found", via: :all
 end

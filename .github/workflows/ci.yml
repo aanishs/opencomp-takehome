@@ -119,3 +119,109 @@ jobs:
       - name: Build
         working-directory: web
         run: npm run build
+
+  # Strict TypeScript + contract integrity: tsc on both packages, ESLint
+  # (strict-type-checked, assertion ban), and a drift check proving the
+  # committed generated types match openapi.yaml exactly.
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+            tests/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci && npm --prefix web ci && npm --prefix tests ci
+
+      - name: Generated types match the contract
+        run: npm run gen:check
+
+      - name: Typecheck and lint
+        run: npm run typecheck
+
+  web_test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Component tests (typed MSW mocks)
+        run: npm run test
+
+  # Black-box suites against the real stack: the Vitest API suite, Playwright
+  # journeys, and Schemathesis contract fuzzing, all served by the same
+  # docker-compose test stack used locally.
+  black_box:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+
+      - name: Boot the test stack
+        run: docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build api_test web_test
+
+      - name: Install test dependencies
+        run: npm --prefix tests ci
+
+      - name: Install Playwright browser
+        run: npx --prefix tests playwright install --with-deps chromium
+
+      - name: Wait for the API
+        run: |
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:3101/up >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "api_test never became healthy" >&2
+          docker compose -f docker-compose.yml -f docker-compose.test.yml logs api_test | tail -50
+          exit 1
+
+      - name: API integration suite
+        run: npm --prefix tests run test:api
+
+      - name: Playwright journeys
+        run: npm --prefix tests run test:e2e
+
+      - name: Install Schemathesis
+        run: pip install schemathesis
+
+      - name: Contract fuzzing
+        run: ./scripts/schemathesis.sh

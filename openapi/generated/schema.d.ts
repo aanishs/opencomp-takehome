@@ -249,6 +249,13 @@ export interface components {
         };
     };
     responses: {
+        /** @description Malformed request: invalid JSON, a missing required parameter, bad encoding, or null bytes in any parameter. The body is unspecified because most 400s are produced by the framework, not the app. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content?: never;
+        };
         /** @description No authenticated session. */
         Unauthorized: {
             headers: {
@@ -289,6 +296,7 @@ export interface components {
     parameters: {
         /** @description Token from GET /api/csrf. The server rejects mutating requests without it (422); marked optional here because the web client injects it via middleware rather than at call sites. */
         CsrfToken: string;
+        /** @description Values beyond the maximum are clamped, not rejected. */
         Page: number;
         PerPage: number;
     };
@@ -318,6 +326,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
         };
     };
     getMe: {
@@ -340,6 +349,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };
@@ -377,6 +387,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             /** @description Validation failure ({errors: [...]}) or invalid CSRF token ({error: ...}). */
             422: {
                 headers: {
@@ -419,6 +430,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             /** @description Invalid email or password. */
             401: {
                 headers: {
@@ -451,6 +463,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["BadRequest"];
             422: components["responses"]["UnprocessableError"];
         };
     };
@@ -463,6 +476,7 @@ export interface operations {
                 sort?: "title" | "author" | "year";
                 /** @description Only "true" filters; any other value is ignored. */
                 available_only?: string;
+                /** @description Values beyond the maximum are clamped, not rejected. */
                 page?: components["parameters"]["Page"];
                 per_page?: components["parameters"]["PerPage"];
             };
@@ -484,6 +498,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };
@@ -509,6 +524,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
@@ -533,6 +549,7 @@ export interface operations {
                     "text/plain": string;
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             /** @description No active checkout for this book. */
             403: {
@@ -557,6 +574,7 @@ export interface operations {
     listCheckouts: {
         parameters: {
             query?: {
+                /** @description Values beyond the maximum are clamped, not rejected. */
                 page?: components["parameters"]["Page"];
                 per_page?: components["parameters"]["PerPage"];
             };
@@ -578,6 +596,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };
@@ -610,6 +629,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             /** @description User at 10-book limit, book at 5-copy limit, already checked out, or invalid CSRF token. */
@@ -648,6 +668,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             /** @description Checkout already returned or expired, or invalid CSRF. */
@@ -691,6 +712,7 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             /** @description Malformed conversation, or invalid CSRF token. */
             422: {
