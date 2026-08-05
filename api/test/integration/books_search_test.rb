@@ -67,6 +67,21 @@ class BooksSearchTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, full.id
   end
 
+  test "non-scalar params do not crash the endpoint" do
+    make_book(title: "Scalar")
+
+    get "/api/books", params: { page: [ "1" ], per_page: { "a" => "1" }, query: [ "x" ] }
+
+    assert_response :success
+    assert_equal 1, response.parsed_body.dig("pagination", "page")
+  end
+
+  test "an overlong query is bounded instead of scanning on the full string" do
+    get "/api/books", params: { query: "a" * 5000 }
+
+    assert_response :success
+  end
+
   test "query filters and combines with pagination" do
     5.times { |i| make_book(title: "Unique Walrus #{i}") }
     make_book(title: "Something else")

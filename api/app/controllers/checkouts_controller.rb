@@ -1,14 +1,24 @@
 class CheckoutsController < ApplicationController
+  include Paginatable
+
   before_action :require_authentication
 
   def index
-    checkouts = current_user.checkouts.includes(:book).order(expires_at: :asc)
-    active_counts = Checkout.active.where(book_id: checkouts.map(&:book_id)).group(:book_id).count
+    # Active checkouts first (they're capped at 10, so page 1 always holds the
+    # full active set), then most-recent history. Ordering is server-controlled
+    # SQL, no user input.
+    checkouts = current_user.checkouts
+      .order(Arel.sql("(returned_at IS NULL AND expires_at > NOW()) DESC"))
+      .order(created_at: :desc)
+    scope, meta = paginate(checkouts)
+    records = scope.includes(:book).to_a
+    active_counts = Checkout.active.where(book_id: records.map(&:book_id)).group(:book_id).count
 
     render json: {
-      checkouts: checkouts.map do |checkout|
+      checkouts: records.map do |checkout|
         checkout_payload(checkout, book_active_count: active_counts.fetch(checkout.book_id, 0))
-      end
+      end,
+      pagination: meta
     }
   end
 
@@ -22,7 +32,7 @@ class CheckoutsController < ApplicationController
   end
 
   def create
-    book = Book.find(params[:book_id])
+    book = Book.find(scalar_param(:book_id))
     checkout = Checkout.borrow!(user: current_user, book: book)
 
     render json: { checkout: checkout_payload(checkout) }, status: :created

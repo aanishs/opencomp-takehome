@@ -1,6 +1,5 @@
 class BooksController < ApplicationController
-  PER_PAGE_DEFAULT = 24
-  PER_PAGE_MAX = 100
+  include Paginatable
 
   # Every sort carries an :id tiebreak — titles, authors, and years repeat, and
   # without a deterministic total order offset pages can duplicate or drop rows.
@@ -14,10 +13,11 @@ class BooksController < ApplicationController
 
   def index
     books = Book.all
+    query = bounded_query
 
-    if params[:query].present?
-      query = "%#{ActiveRecord::Base.sanitize_sql_like(params[:query])}%"
-      books = books.where("title ILIKE :query OR author ILIKE :query OR isbn ILIKE :query", query: query)
+    if query.present?
+      like = "%#{ActiveRecord::Base.sanitize_sql_like(query)}%"
+      books = books.where("title ILIKE :query OR author ILIKE :query OR isbn ILIKE :query", query: like)
     end
 
     if params[:available_only] == "true"
@@ -29,28 +29,13 @@ class BooksController < ApplicationController
       SQL
     end
 
-    total_count = books.count
-    page = [ params[:page].to_i, 1 ].max
-    per_page = params[:per_page].to_i
-    per_page = PER_PAGE_DEFAULT unless per_page.positive?
-    per_page = [ per_page, PER_PAGE_MAX ].min
-    total_pages = (total_count.to_f / per_page).ceil
-
-    records = books.order(SORTS.fetch(params[:sort], SORTS["title"]))
-      .offset((page - 1) * per_page)
-      .limit(per_page)
-      .to_a
-
+    scope, meta = paginate(books.order(SORTS.fetch(params[:sort], SORTS["title"])))
+    records = scope.to_a
     counts = Checkout.active.where(book_id: records.map(&:id)).group(:book_id).count
 
     render json: {
       books: records.map { |book| book_payload(book, counts.fetch(book.id, 0)) },
-      pagination: {
-        page: page,
-        per_page: per_page,
-        total_pages: total_pages,
-        total_count: total_count
-      }
+      pagination: meta
     }
   end
 
