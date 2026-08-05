@@ -65,6 +65,9 @@ const middleware: Middleware = {
 export const api = createClient<paths>({
   baseUrl: import.meta.env.VITE_API_URL ?? "http://localhost:3000",
   credentials: "include",
+  // Resolve fetch at request time, not module-eval time — test interceptors
+  // (MSW) patch globalThis.fetch after this module is imported.
+  fetch: (request) => globalThis.fetch(request),
 });
 api.use(middleware);
 
