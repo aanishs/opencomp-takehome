@@ -9,7 +9,8 @@
     "gen:check": "npm run gen:api && git diff --exit-code openapi/generated",
     "test:api": "npm --prefix tests run test:api",
     "test": "npm run typecheck && npm run test:web && npm run test:api",
-    "test:web": "npm --prefix web run test"
+    "test:web": "npm --prefix web run test",
+    "test:e2e": "npm --prefix tests run test:e2e"
   },
   "devDependencies": {
     "eslint": "^9.0.0",

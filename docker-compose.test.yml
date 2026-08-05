@@ -23,7 +23,7 @@ services:
       POSTGRES_TEST_DB: library_test
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      FRONTEND_ORIGIN: http://localhost:${WEB_TEST_PORT:-5175}
+      FRONTEND_ORIGIN: http://127.0.0.1:${WEB_TEST_PORT:-5175}
     ports:
       - "127.0.0.1:${API_TEST_PORT:-3101}:3101"
     volumes:

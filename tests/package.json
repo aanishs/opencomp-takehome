@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test:api": "vitest run --project api && vitest run --project ratelimit"
+    "test:api": "vitest run --project api && vitest run --project ratelimit",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^12.0.0",
+    "@playwright/test": "^1.62.1",
     "@total-typescript/shoehorn": "^0.1.2",
     "@total-typescript/ts-reset": "^0.6.1",
     "@total-typescript/tsconfig": "^1.0.4",

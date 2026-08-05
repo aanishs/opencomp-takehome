@@ -3,7 +3,16 @@
   "compilerOptions": {
     "noFallthroughCasesInSwitch": true,
     "allowJs": false,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src", "reset.d.ts", "vitest.config.ts", "../openapi/generated/schema.d.ts"]
+  "include": [
+    "src",
+    "e2e",
+    "reset.d.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "../openapi/generated/schema.d.ts"
+  ]
 }
