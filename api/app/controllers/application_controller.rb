@@ -5,6 +5,9 @@ class ApplicationController < ActionController::API
   protect_from_forgery with: :exception
 
   rescue_from ActionController::InvalidAuthenticityToken, with: :invalid_authenticity_token
+  # A stable JSON 404 so the OpenAPI contract can specify the shape instead of
+  # leaking the framework-default error page.
+  rescue_from ActiveRecord::RecordNotFound, with: :not_found
 
   private
 
@@ -20,5 +23,9 @@ class ApplicationController < ActionController::API
 
   def invalid_authenticity_token
     render json: { error: "Invalid CSRF token" }, status: :unprocessable_entity
+  end
+
+  def not_found
+    render json: { error: "Not found" }, status: :not_found
   end
 end
